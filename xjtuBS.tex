@@ -1,0 +1,574 @@
+%!TEX TS-program = xelatex
+%!TEX encoding = UTF-8 Unicode
+\documentclass[Linux]{xjtuBSThesis}
+
+% ==================== 基本信息 ====================
+\author{陈必纯}{Bin Chen}
+\title{面向项目数据的图谱化智能体工作空间设计与实现}{Design and Implementation of a Graph-Native Agent Workspace for Project Data}
+\advisor{XXX~教授}{Prof. XXX}
+\college{电信学部}
+\department{自动化}
+\class{自动化钱2201（信息）}
+\studentid{2222112595}
+\edate{2025/06/15}
+
+\begin{document}
+
+% ==================== 封面 ====================
+\makecover
+
+% ==================== 前置部分 ====================
+\frontmatter
+
+% ---------- 中文摘要 ----------
+\begin{abstractcn}
+
+随着企业和科研场景中的数据项目不断扩展，关系数据库、表格文件、JSON 文档和说明文档常常以松散目录的形式共同存在。大语言模型虽然具备较强的自然语言理解和代码生成能力，但在直接面对真实数据项目时仍存在上下文容量有限、数据库模式关系隐式、领域术语歧义以及分析经验难以复用等问题。针对这些问题，本文设计并实现了 Pontis：一种面向项目数据的图谱化智能体工作空间。Pontis 不直接训练专用 Text-to-SQL 模型，而是在原始数据与大语言模型智能体之间引入可查询、可更新、可复用的知识图谱中间层，使智能体能够先理解数据项目，再执行自然语言查询和数据分析任务。
+
+本文首先提出了以 Neo4j 和 Cypher 为核心的项目工作空间架构，将文件、数据库、表、列、外键、统计摘要、语义描述、消歧知识和跨项目经验统一建模为图实体及关系。系统通过源模块在查询前发布文件系统和 SQLite 模式等源事实，通过提取器模块生成列统计、值分布、列重叠、外键验证、语义摘要和向量索引等派生知识，并通过统一的 \texttt{Workspace.cypher} 接口向上层工具和智能体提供图查询能力。其次，本文设计了面向数据分析的工具调用智能体，支持 \texttt{find}、\texttt{meta}、\texttt{query}、\texttt{grep}、\texttt{read}、\texttt{cypher} 等工具，并引入轮次限制、探索检查、SQL 实体检查、桥接表检查和 SQL 消歧检查等护栏机制，以降低幻觉、错误连接和过度探索风险。
+
+在 BIRD Text-to-SQL 开发集上的阶段性实验表明，Pontis 在当前已落盘的 1533 道题目日志上取得 64.45\% 的执行准确率。错误分析显示，系统主要错误来自 BIRD SQL 风格偏好、局部模式理解、值定位和多表连接路径偏差。进一步的实验计划将 Pontis 与 Bash Agent、CHESS、Alpha-SQL 和 DeepEye-SQL 在统一模型、统一数据副本和统一计时协议下比较，重点评估执行准确率、预处理成本、在线查询耗时、LLM 调用次数、输入 token、工具调用次数和 SQL 执行次数。实验设计表明，Pontis 的研究价值不在于成为专用 SQL 模型，而在于为通用数据智能体提供一种可解释、可缓存、可持续演化的数据理解工作空间。
+
+\end{abstractcn}
+
+\keywordscn{大语言模型；智能体；知识图谱；Text-to-SQL；数据工作空间}
+
+% ---------- 英文摘要 ----------
+\begin{abstracten}
+
+As data projects in enterprise and research scenarios continue to grow, relational databases, tabular files, JSON documents, and project documentation often coexist in loosely organized directories. Large language models have shown strong capabilities in natural language understanding and code generation, but they still struggle with real data projects because of limited context windows, implicit schema relationships, ambiguous domain terminology, and the lack of reusable analysis experience. To address these problems, this thesis designs and implements Pontis, a graph-native agent workspace for project data. Instead of training a specialized Text-to-SQL model, Pontis introduces a queryable, updatable, and reusable knowledge graph layer between raw data and LLM agents, enabling agents to understand a data project before answering natural language queries.
+
+This thesis first presents a workspace architecture centered on Neo4j and Cypher. Files, databases, tables, columns, foreign keys, statistical summaries, semantic descriptions, disambiguation hints, and cross-project experience are modeled as graph entities and relationships. Source modules publish source-derived facts such as file-system and SQLite schema information before graph queries. Extractor modules generate derived knowledge including column statistics, value distributions, column overlaps, foreign-key validation, semantic summaries, and vector indexes. All upper-level tools and agents access the graph through a unified \texttt{Workspace.cypher} interface. The thesis then presents a tool-calling data agent equipped with tools such as \texttt{find}, \texttt{meta}, \texttt{query}, \texttt{grep}, \texttt{read}, and \texttt{cypher}. Guardrails including round limitation, exploration checking, SQL entity checking, bridge-table checking, and SQL disambiguation checking are introduced to reduce hallucination, incorrect joins, and unnecessary exploration.
+
+Preliminary experiments on the BIRD Text-to-SQL development set show that Pontis achieves 64.45\% execution accuracy on 1,533 currently logged questions. Error analysis indicates that the major failure sources are BIRD-specific SQL style preferences, local schema misunderstanding, value grounding errors, and join-path mistakes. The planned full evaluation compares Pontis with Bash Agent, CHESS, Alpha-SQL, and DeepEye-SQL under a shared model configuration, private data copies, and a unified timing protocol. The comparison focuses on execution accuracy, preprocessing cost, online latency, LLM calls, input tokens, tool calls, and SQL executions. The value of Pontis is not to replace specialized SQL models, but to provide a transparent, cacheable, and continuously evolving data-understanding workspace for general-purpose data agents.
+
+\end{abstracten}
+
+\keywordsen{large language model; agent; knowledge graph; Text-to-SQL; data workspace}
+
+\tableofcontents
+
+% ==================== 正文 ====================
+\mainmatter
+
+\section{绪论}
+
+\subsection{研究背景与意义}
+
+数据分析任务正在从单一数据库查询转向面向整个项目目录的综合理解。一个真实数据项目中通常同时包含 SQLite 数据库、CSV 或 TSV 表格、JSON 配置、Markdown 说明、实验日志以及人工整理的业务规则。传统数据库系统强调数据的存储和查询效率，但并不负责把这些分散的项目知识组织成适合自然语言智能体使用的上下文。与此同时，Text-to-SQL 技术试图将自然语言问题转换为 SQL 查询，从而降低普通用户访问结构化数据的门槛。
+
+近年来，大语言模型在 Text-to-SQL 任务中取得了显著进展。基于提示工程、检索增强、候选生成、执行反馈和自修正的方法能够在 Spider\upcite{yu2018spider}、BIRD\upcite{li2023bird} 等基准上取得较高准确率。然而，直接将大语言模型用于真实数据项目仍面临以下困难。
+
+第一，数据库模式和项目上下文过大。BIRD 等真实基准中的数据库往往包含多张表和大量列，若将完整 schema、样例值和说明文档直接塞入提示词，会造成上下文冗长、成本上升和注意力分散。
+
+第二，关系和语义常常是隐式的。许多数据库并没有完整外键约束，表间连接依赖命名约定、值域重叠或项目说明。LLM 若只看到表名和列名，容易选择错误的连接路径。
+
+第三，分析经验难以复用。智能体在一次任务中发现的字段含义、比例计算规则或局部 join 习惯，往往在下一次查询中被遗忘，导致重复探索和重复犯错。
+
+第四，通用工具智能体缺少数据项目专用护栏。类似 Claude Code、Codex 的工具调用式智能体擅长读文件、运行命令和迭代修复，但在数据库问答中，错误 SQL 可能来自虚构字段、遗漏桥接表、误解同名列或过度执行昂贵查询，需要更贴近数据任务的检查机制。
+
+本文认为，真实数据项目中的自然语言分析不应只被视为单次 SQL 生成问题，而应被视为“智能体如何持续理解并维护一个数据项目”的问题。Pontis 因此在原始数据和 LLM 智能体之间引入图谱化工作空间，将 schema、统计、关系、摘要、消歧和经验统一表示为可查询知识，使智能体通过工具逐步获取精确上下文，而不是每题从零扫描整个项目。
+
+\subsection{研究目标}
+
+本文的研究目标是设计并实现一个面向项目数据的图谱化智能体工作空间，并验证该工作空间对 Text-to-SQL 和数据分析任务的价值。具体目标包括：
+
+（1）建立统一的项目图谱模型。将文件、数据库、表、列、外键、值分布、语义摘要、消歧知识和经验规则表示为图实体及关系，使异构数据源具有统一查询入口。
+
+（2）设计可扩展的源模块和提取器机制。源模块负责发布文件系统和 SQLite schema 等源事实，提取器负责生成列统计、列重叠、语义摘要和向量索引等派生知识。
+
+（3）实现面向数据分析的 LLM 工具智能体。智能体通过 \texttt{find}、\texttt{meta}、\texttt{query}、\texttt{grep}、\texttt{read} 和 \texttt{cypher} 等工具访问图谱和原始数据，并通过护栏机制约束 SQL 生成过程。
+
+（4）在 BIRD Text-to-SQL 任务中评估系统能力。除执行准确率外，还关注预处理成本、在线查询成本、LLM 调用次数、输入上下文长度、工具调用次数和 SQL 执行次数。
+
+\subsection{主要贡献}
+
+本文的主要贡献如下：
+
+（1）提出一种图谱化数据工作空间架构。该架构以 Neo4j 为持久化图存储，以 Cypher 为统一查询接口，以源模块和提取器共同维护项目知识，避免将全部数据粗暴拼接到 LLM 上下文中。
+
+（2）实现一套面向数据库项目的知识提取与组织机制。系统能够自动暴露文件系统、SQLite 模式、表列结构和外键关系，并进一步生成列级统计、值样例、列重叠、AI 摘要和语义向量等派生知识。
+
+（3）设计了结合工具调用和护栏的 LLM 数据智能体。系统将图谱检索、元数据查看、SQL 执行、文件搜索、JSON 查看和图写入操作封装为工具，并通过 SQL 实体检查、桥接表检查和消歧检查减少常见数据库问答错误。
+
+（4）给出面向 test-time framework 的实验设计。本文将 Pontis 与 Bash Agent、CHESS、Alpha-SQL、DeepEye-SQL 等方法放在统一评测协议下比较，强调准确率之外的系统性能指标，使系统型贡献能够被量化分析。
+
+\subsection{论文结构}
+
+本文结构如下：第二章介绍相关工作；第三章给出 Pontis 的系统架构；第四章阐述图谱工作空间和知识提取实现；第五章介绍智能体工具系统与护栏机制；第六章给出实验设计、阶段性结果和性能分析；第七章总结全文并展望未来工作。
+
+\section{相关工作}
+
+\subsection{Text-to-SQL}
+
+Text-to-SQL 是自然语言处理与数据库系统交叉领域的重要任务，其目标是将自然语言问题转换为可执行 SQL。早期方法多依赖规则和语义解析，随后 Seq2SQL\upcite{zhong2017seq2sql} 等方法将神经网络和强化学习引入 SQL 生成。Spider\upcite{yu2018spider} 的提出推动了跨数据库泛化研究，RAT-SQL\upcite{wang2020rat} 通过关系感知编码器建模问题与数据库 schema 之间的关系，提升了复杂模式链接能力。
+
+大语言模型出现后，Text-to-SQL 逐渐转向提示工程、检索增强、分解推理和执行反馈。C3\upcite{gao2024c3}、DIN-SQL\upcite{pourreza2024dinsql} 等方法表明，强 LLM 即使不经过任务级微调，也能在合理提示和自修正流程下完成复杂 SQL 生成。BIRD 基准进一步引入更真实的大规模数据库、外部 evidence 和领域知识，使 Text-to-SQL 更接近实际数据分析场景。
+
+本文与上述方法的差别在于，Pontis 不只把数据库 schema 转换成提示词，而是建立一个长期存在的图谱工作空间。该工作空间既服务于单次 SQL 生成，也服务于持续的数据项目理解、经验沉淀和后续任务复用。
+
+\subsection{大语言模型智能体与工具调用}
+
+工具调用是增强 LLM 能力的重要途径。Toolformer\upcite{schick2023toolformer} 探索了语言模型如何学会使用外部 API，ReAct\upcite{yao2023react} 将推理和行动交替组织，使模型能够在环境反馈中逐步完成任务。近年来的代码智能体产品也采用类似模式：模型先读取文件、运行命令或调用工具，再根据观察结果继续推理。
+
+在数据分析场景中，工具调用可以弥补 LLM 静态知识不足的问题。例如，模型可以通过 SQL 查询验证假设，通过搜索工具定位相关字段，通过元数据工具理解列含义。但工具调用也带来新的问题：串行 LLM 往返会增加延迟，工具结果会扩大下一轮输入上下文，错误工具调用会把模型引向错误结论。因此，数据智能体不仅需要工具，还需要对工具调用过程进行约束和度量。
+
+Pontis 将工具调用与图谱工作空间结合起来。工具不是直接暴露散乱文件和数据库，而是围绕图实体、图关系和原始数据端口设计，使模型能够用较少轮次获得结构化上下文。
+
+\subsection{知识图谱与数据项目理解}
+
+知识图谱将实体及其关系表示为图结构，适合表达数据库 schema、文件组织、表列归属、外键关系和业务概念之间的联系。传统知识图谱构建强调从文本中抽取实体和关系，而数据项目场景中的图谱构建还需要处理结构化源事实和统计派生知识。
+
+Pontis 的图谱并不是静态业务知识库，而是围绕项目数据持续生成和更新的工作空间。文件系统和数据库 schema 可以作为源事实按需刷新，AI 摘要、列统计、列重叠和人工经验可以作为派生事实持久化。通过这种方式，Pontis 将“当前项目是什么”和“过去分析学到了什么”统一到一个可查询图中。
+
+\section{Pontis 系统架构}
+
+\subsection{总体设计}
+
+Pontis 的核心思想是在原始数据源和智能体之间建立图谱化中间层。系统整体由四个部分组成：原始数据源、图谱工作空间、知识提取器和工具智能体。其数据流如图\ref{fig:architecture_text} 所示。
+
+\begin{figure}[htbp]
+   \centering
+   \begin{minipage}{0.86\textwidth}
+\begin{verbatim}
+Raw Project
+  -> Source Modules
+  -> Neo4j Graph Workspace
+  -> Extractors / Tools
+  -> LLM Agent
+  -> SQL / Analysis Answer
+\end{verbatim}
+   \end{minipage}
+   \downcaption{Pontis 系统数据流示意}
+   \label{fig:architecture_text}
+\end{figure}
+
+原始数据源包括本地文件、SQLite 数据库、CSV/TSV 表格、JSON 文档和文本说明。源模块负责将这些数据源中的基础事实发布为图节点和边，例如目录、文件、数据库、表、列和外键。Neo4j 图谱工作空间负责持久化这些事实和派生知识，并提供 Cypher 查询接口。提取器在图谱之上运行，生成统计、摘要、关系和向量等增强信息。工具智能体通过工具访问图谱和原始数据，逐步完成自然语言分析任务。
+
+系统中最重要的边界是 \texttt{Workspace.cypher(...)}。所有上层工具和提取器都通过该接口访问图谱，而不是直接耦合到具体存储实现。这样可以将数据源刷新、图查询、结果指针解析和模块触发逻辑集中在工作空间层，降低工具层复杂度。
+
+\subsection{图谱数据模型}
+
+Pontis 将项目数据表示为属性图。主要实体类型包括：
+
+（1）文件实体。表示项目目录中的文件，包含路径、文件类型和源访问指针等属性。
+
+（2）数据库实体。表示 SQLite 等数据库文件，作为表、视图和列的上级节点。
+
+（3）表与视图实体。表示数据库表、视图或表格文件中的逻辑表，记录名称、来源和结构信息。
+
+（4）列实体。表示表中的字段，记录列名、类型、样例值、统计信息和语义描述。
+
+（5）外键和关系实体。表示显式外键、推断关系、列重叠和消歧知识。
+
+（6）知识实体。表示人工或自动沉淀的规则、经验、错误教训和 benchmark 案例。
+
+Pontis 的建模原则是：能够用边表达的归属和来源关系，不重复写入节点属性。例如，表属于数据库、列属于表、chunk 来源于文件，都优先用图边表示。节点属性只保存实体自身的局部事实，如列类型、摘要文本、统计量和向量索引状态。这一原则可以减少事实重复，避免移动或更新数据源时产生不一致。
+
+\subsection{源模块与按需发布}
+
+Pontis 的源模块位于 \texttt{storage/stores/} 目录中，负责把原始数据源暴露为可查询图。当前文件系统项目的典型模块链包括：
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 源模块}
+  \label{tab:source_modules}
+  \begin{tabular}{lll}
+    \toprule[1.5pt]
+    \textbf{模块} & \textbf{对应文件} & \textbf{职责} \\
+    \midrule[1pt]
+    FSModule & \texttt{fs.py} & 发布目录与文件实体 \\
+    TextModule & \texttt{text.py} & 发布文本文件元信息和读取端口 \\
+    CSVSchemaModule & \texttt{csv\_schema.py} & 发布 CSV/TSV 表结构 \\
+    SQLiteSchemaModule & \texttt{db\_schema.py} & 发布 SQLite 数据库、表、列和外键 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+工作空间在执行 Cypher 前会解析查询涉及的标签和属性，并根据触发规则选择需要刷新的源模块。例如，当查询涉及 \texttt{table}、\texttt{col} 或 \texttt{fk} 标签时，SQLite schema 模块会先发布数据库结构；当查询只涉及文本文件时，则不必刷新数据库模块。对于读查询，模块发布结果会被缓存；对于写查询，系统会在执行后使相关模块缓存失效，以保证后续读取的一致性。
+
+\subsection{Neo4j 与 Cypher 接口}
+
+Pontis 使用 Neo4j 作为当前主图存储。工作空间层只暴露 Cypher 接口，源模块和工具通过生成 Cypher 语句完成图实体写入、匹配和查询。使用 Neo4j 的好处在于：
+
+（1）Cypher 能直接表达图模式匹配、邻居遍历和多跳关系查询，适合表列关系、外键关系和知识实体检索。
+
+（2）图存储与工具层解耦。工具只需要关心实体 ref、标签和查询结果，不需要自己维护图索引。
+
+（3）跨项目路由更清晰。Pontis 可以为不同项目配置不同 Neo4j 端口或数据库，使同一套工具能够查询多个项目图。
+
+（4）后续可利用 Neo4j 的索引、向量检索和查询优化能力，支撑更大规模数据项目。
+
+\section{知识提取与图谱构建}
+
+\subsection{提取器框架}
+
+Pontis 的提取器位于 \texttt{extractor/} 目录中。提取器框架由模块注册表和顺序执行引擎组成，核心入口为 \texttt{extractor/engine.py}。每个提取模块接收一个 \texttt{Workspace} 对象，通过 Cypher 和工具函数读取源事实，并将派生结果写回图谱。
+
+当前注册的主要提取模块如表\ref{tab:extractors} 所示。
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 主要提取模块}
+  \label{tab:extractors}
+  \begin{tabular}{lll}
+    \toprule[1.5pt]
+    \textbf{模块} & \textbf{文件} & \textbf{功能} \\
+    \midrule[1pt]
+    db\_column\_stats\_approx & \texttt{db\_column\_stats\_approx.py} & SQLite 列统计、样例值和高频值 \\
+    csv\_column\_stats & \texttt{csv\_column\_stats.py} & CSV 列统计与高频值 \\
+    json\_pattern & \texttt{json\_pattern.py} & JSON 结构模式分析 \\
+    db\_fk\_validate & \texttt{db\_fk\_validate.py} & 外键关系验证 \\
+    db\_column\_overlap & \texttt{db\_column\_overlap.py} & 列值重叠和潜在关系发现 \\
+    ai\_db\_column\_summary & \texttt{ai\_db\_column\_summary.py} & LLM 生成列语义摘要 \\
+    semantic\_embedding & \texttt{semantic\_embedding.py} & 对 detail 文本生成语义向量 \\
+    agent\_disambiguate & \texttt{explorer/disambiguate.py} & 生成局部消歧知识 \\
+    agent\_join\_detect & \texttt{explorer/join\_detect.py} & 通过智能体探索潜在连接关系 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+提取器框架具有两个特点。第一，模块粒度较细，可以根据实验需要选择只运行统计、摘要或 embedding 模块。第二，提取结果回写到同一个图谱工作空间中，后续工具和智能体无需理解模块内部实现，只需查询图实体。
+
+\subsection{列统计与值分布}
+
+列统计是 Text-to-SQL 中的重要上下文。仅靠列名往往无法判断一个字段的真实含义，例如 \texttt{type}、\texttt{id}、\texttt{status} 等列名在不同表中可能含义不同。Pontis 对数据库和表格文件中的列提取以下信息：
+
+（1）基本类型信息，包括 SQLite 声明类型和归一化类型。
+
+（2）空值、不同值数量、样例值和文本长度等轻量统计。
+
+（3）数值列的范围和分布摘要。
+
+（4）文本列的高频值，用于帮助模型理解枚举字段和业务取值。
+
+这些统计信息会写入列实体的元数据，并在 \texttt{meta} 工具中呈现。与直接把整列数据交给 LLM 不同，统计摘要将大量原始值压缩成稳定、低成本的上下文。
+
+\subsection{关系发现与消歧知识}
+
+真实数据库中并非所有连接关系都有显式外键。Pontis 因此同时利用三类信息发现关系：
+
+（1）数据库内声明的外键。SQLite schema 模块读取外键定义并将其建模为 \texttt{fk} 实体。
+
+（2）列值重叠。提取器对不同表的候选列计算值域交集和相似度，生成 \texttt{overlap} 实体，提示可能存在的 join 路径。
+
+（3）智能体探索。Explorer 模块可以通过读取 schema、样例值和执行查询，生成更高层的 join 经验和消歧实体。
+
+消歧知识主要用于处理同名字段和领域术语。例如多个表中都存在 \texttt{id}、\texttt{name} 或 \texttt{type} 时，智能体在最终生成 SQL 前需要确认字段来源。Pontis 将这些消歧提示作为图实体保存，并通过 SQL 消歧护栏在高风险 SQL 输出时提醒模型读取相关信息。
+
+\subsection{语义摘要与向量索引}
+
+Pontis 中的 \texttt{brief} 和 \texttt{detail} 是面向智能体的核心文本属性。统计模块能告诉模型“这一列有什么值”，AI 摘要模块进一步解释“这一列代表什么语义”。系统会对表、列、JSON 和文本文件生成摘要，并通过 \texttt{semantic\_embedding} 模块为 detail 文本生成向量。
+
+语义摘要和向量索引使 \texttt{find(ref, query)} 不再只是名称匹配，而可以根据自然语言问题检索相关实体。例如，当问题涉及“percentage”“ratio”“foreign player”或“school SAT score”时，系统可以召回对应表列、知识规则或历史案例。这样可以减少全量浏览 schema 的成本，使智能体更快聚焦到候选实体。
+
+\section{工具智能体设计}
+
+\subsection{智能体循环}
+
+Pontis 智能体采用工具调用循环。每轮循环中，系统将用户问题、系统提示、工具定义和历史消息发送给 LLM；若 LLM 返回工具调用，Pontis 执行对应工具并把结果作为下一轮输入；若 LLM 返回最终文本，则经过护栏检查后输出结果。
+
+该过程可以表示为：
+
+\begin{equation}
+A_t = \mathrm{LLM}(Q, H_{t-1}, T),
+\end{equation}
+
+其中 $Q$ 表示用户问题，$H_{t-1}$ 表示历史上下文和工具结果，$T$ 表示可用工具集合，$A_t$ 表示第 $t$ 轮模型动作。若 $A_t$ 是工具调用，则系统执行工具并更新 $H_t$；若 $A_t$ 是最终 SQL 或自然语言答案，则结束循环。
+
+工具智能体的在线性能主要受三类因素影响：串行 LLM 轮次、工具执行时间和工具结果回填后的输入 token。一次 LLM 轮次可能调用多个工具，因此工具调用次数不能直接等同于 LLM 往返次数。本文在实验中分别统计 \texttt{LLM Rounds/Q}、\texttt{Tool Calls/Q} 和 \texttt{Input Tokens/Q}，以区分串行等待、探索操作量和上下文膨胀。
+
+\subsection{工具集合}
+
+Pontis 将工具划分为只读工具、写入工具和子智能体工具。只读模式是 Text-to-SQL benchmark 的主要模式，包含实体查找、元数据读取、文件读取、内容搜索、JSON 查看、SQL 查询和图查询等能力。写入模式增加知识实体创建、元数据更新、边添加和删除能力，用于经验沉淀和项目知识维护。
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 主要工具}
+  \label{tab:tools}
+  \begin{tabular}{lll}
+    \toprule[1.5pt]
+    \textbf{工具} & \textbf{类别} & \textbf{作用} \\
+    \midrule[1pt]
+    \texttt{find} & 图检索 & 按 ref 模式和语义 query 查找实体 \\
+    \texttt{meta} & 元数据 & 查看实体属性和邻居关系 \\
+    \texttt{query} & 数据查询 & 在数据库或表格文件上执行只读 SQL \\
+    \texttt{cypher} & 图查询 & 直接执行 Cypher 图查询 \\
+    \texttt{grep} & 文本搜索 & 在文件实体范围内搜索内容 \\
+    \texttt{read} & 文件读取 & 读取文本文件指定行范围 \\
+    \texttt{jd} & JSON 浏览 & 查看 JSON 节点和结构摘要 \\
+    \texttt{bash} & 命令执行 & 执行受限 shell 命令 \\
+    \texttt{create\_entity} & 图写入 & 创建知识实体 \\
+    \texttt{update\_meta} & 图写入 & 更新实体元数据 \\
+    \texttt{add\_edge} & 图写入 & 添加实体关系边 \\
+    \texttt{delete} & 图写入 & 删除实体 \\
+    \texttt{agent} & 子任务 & 调用子智能体完成局部任务 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+其中，\texttt{find}、\texttt{meta} 和 \texttt{query} 是 Text-to-SQL 场景中最核心的三个工具。\texttt{find} 用于缩小候选表列或知识范围，\texttt{meta} 用于精读实体语义和邻居关系，\texttt{query} 用于验证 SQL 假设和检查样例值。
+
+\subsection{提示组装}
+
+Pontis 的提示词不是单个固定 prompt，而是由多个片段按运行模式组合而成。只读模式通常包含基础身份、工具说明、图谱本体、元数据约定、SQL 规范、护栏规则、只读约束、项目上下文和 README 摘要等片段。写入模式会额外说明如何创建知识实体和维护图关系；反思模式则强调错误归因和经验沉淀。
+
+这种分层组装方式有两个优点。第一，系统可以针对不同任务限制工具权限，减少模型误用写入工具的风险。第二，实验可以通过开关 prompt 片段和工具集合进行消融分析，例如禁用 BIRD global 知识、禁用 query 工具或禁用消歧实体。
+
+\subsection{护栏机制}
+
+Pontis 的护栏层位于 LLM 输出和工具执行之间。每个护栏独立检查当前 pending tool calls 或最终文本输出，并给出 allow、warn 或 block 裁决。多个护栏的裁决按 block 高于 warn 高于 allow 的优先级聚合。
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 护栏机制}
+  \label{tab:guardrails}
+  \begin{tabular}{lll}
+    \toprule[1.5pt]
+    \textbf{护栏} & \textbf{文件} & \textbf{作用} \\
+    \midrule[1pt]
+    RoundLimit & \texttt{round\_limit.py} & 达到轮次上限后阻止继续调用工具 \\
+    ExplorationCheck & \texttt{exploration\_check.py} & 阻止过宽泛的全图探索 \\
+    ToolAbuse & \texttt{tool\_abuse.py} & 限制指定工具的过量使用 \\
+    SQLEntityCheck & \texttt{sql\_check.py} & 检查 SQL 引用表列是否已读且存在 \\
+    BridgeTableCheck & \texttt{sql\_join\_check.py} & 检查多表连接是否遗漏桥接关系 \\
+    SQLDisambigCheck & \texttt{sql\_disambig\_check.py} & 提醒同名列和局部术语消歧 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+护栏的设计目标不是替代模型推理，而是在高风险节点提供结构化反馈。例如，模型若尝试输出最终 SQL，但其中引用的表列从未通过 \texttt{meta} 阅读，SQL 实体检查会阻断最终输出并要求模型先核实实体；若 join 中涉及可能需要桥接表的列对，桥接表检查会提示相关关系实体；若 SQL 中出现与消歧实体相关的术语，消歧检查会要求模型读取对应解释。
+
+\section{实验设计与阶段性结果}
+
+\subsection{研究问题}
+
+本文实验围绕以下问题展开：
+
+（1）Pontis 相比只给 shell/sqlite/file 工具的 Bash Agent，是否能通过图谱化数据工作空间提升 Text-to-SQL 准确率和稳定性？
+
+（2）Pontis 与 CHESS、Alpha-SQL、DeepEye-SQL 等 test-time framework 相比，在准确率、预处理成本和在线查询成本之间处于什么位置？
+
+（3）Pontis 的图谱元数据、消歧实体、SQL 验证查询和 BIRD global 经验分别贡献了什么？
+
+（4）即席查询性能主要受哪些因素影响，是最终输出长度、工具调用次数，还是串行 LLM 轮次和输入上下文膨胀？
+
+\subsection{数据集与评测指标}
+
+本文采用 BIRD 开发集作为主要实验数据。BIRD 包含真实数据库、自然语言问题、evidence、标准 SQL 和难度标签，适合评估真实数据库问答能力。当前阶段的 Pontis 日志覆盖 1533 道 dev 题目，后续完整评测将覆盖官方 dev 的 1534 道题。
+
+主准确率指标为执行准确率（Execution Accuracy, EX），即预测 SQL 与 gold SQL 在同一数据库上执行后的结果集合是否一致。除准确率外，本文还记录以下性能与成本指标：
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{性能与成本指标}
+  \label{tab:metrics}
+  \begin{tabular}{ll}
+    \toprule[1.5pt]
+    \textbf{指标} & \textbf{含义} \\
+    \midrule[1pt]
+    Preprocess Time & 冷启动构建图谱、索引或快照的耗时 \\
+    Preprocess Size & 预处理产物的磁盘大小 \\
+    Online Time/Q & 每题在线解题平均耗时 \\
+    P95 Online Time/Q & 每题在线耗时的 95 分位数 \\
+    LLM Rounds/Q & agent 方法中串行 LLM 决策轮数 \\
+    LLM Calls/Q & 每题 LLM 请求数 \\
+    Input Tokens/Q & 每题输入 token 数，反映上下文膨胀 \\
+    Tool Calls/Q & 每题工具调用次数 \\
+    SQL Exec/Q & 每题 SQL 执行次数 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+即席查询耗时可近似分解为：
+
+\begin{equation}
+T_{\mathrm{online}} \approx
+\sum_i T_{\mathrm{LLM},i}+
+\sum_j T_{\mathrm{tool},j}+
+T_{\mathrm{context}}+
+T_{\mathrm{queue}} .
+\end{equation}
+
+其中 $T_{\mathrm{LLM},i}$ 表示第 $i$ 次模型调用延迟，$T_{\mathrm{tool},j}$ 表示第 $j$ 次工具执行延迟，$T_{\mathrm{context}}$ 表示上下文 token 处理成本，$T_{\mathrm{queue}}$ 表示 API 排队和网络波动。该分解说明，最终 SQL 输出长度通常不是主瓶颈；真正关键的是串行 LLM 轮次、工具执行和工具结果回填造成的上下文扩张。
+
+\subsection{对比方法}
+
+完整实验计划比较五个方法：
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{主实验对比方法}
+  \label{tab:baselines}
+  \begin{tabularx}{\textwidth}{llX}
+    \toprule[1.5pt]
+    \textbf{方法} & \textbf{目录} & \textbf{定位} \\
+    \midrule[1pt]
+    Bash Agent & \texttt{Bash-Agent} & 无图谱、无专用预处理的通用工具 agent \\
+    Pontis & \texttt{Pontis} & 图谱工作空间与工具智能体 \\
+    CHESS & \texttt{CHESS} & 检索、schema selection、候选生成和 unit test pipeline \\
+    Alpha-SQL & \texttt{Alpha-SQL} & 基于 MCTS 的 test-time search 方法 \\
+    DeepEye-SQL & \texttt{DeepEye-SQL} & value retrieval、schema linking、generation、revision、selection pipeline \\
+    \bottomrule[1.5pt]
+  \end{tabularx}
+\end{table}
+
+为保证公平性，所有方法使用根目录统一配置中的 DeepSeek LLM 和同一 embedding 模型。每个方法拥有自己的 BIRD dev 工作副本，所有输出、日志和评测结果写入 \texttt{workspace/baselines/<method>/}。主性能实验采用单 worker、CPU-only 配置，并顺序运行各方法，避免并发 API 请求影响 wall-clock 比较。
+
+\subsection{Pontis 阶段性结果}
+
+根据当前已落盘的 BIRD dev 日志，Pontis 在 1533 道题目上正确 988 道，错误 539 道，执行错误或系统错误 6 道，整体执行准确率为 64.45\%。各数据库结果如表\ref{tab:pontis_bird_current} 所示。
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 在 BIRD dev 已落盘日志上的阶段性结果}
+  \label{tab:pontis_bird_current}
+  \begin{tabular}{lrrrr}
+    \toprule[1.5pt]
+    \textbf{数据库} & \textbf{总题数} & \textbf{正确} & \textbf{错误/异常} & \textbf{准确率(\%)} \\
+    \midrule[1pt]
+    california\_schools & 89 & 49 & 40 & 55.06 \\
+    card\_games & 191 & 108 & 83 & 56.54 \\
+    codebase\_community & 185 & 125 & 60 & 67.57 \\
+    debit\_card\_specializing & 64 & 44 & 20 & 68.75 \\
+    european\_football\_2 & 129 & 88 & 41 & 68.22 \\
+    financial & 106 & 70 & 36 & 66.04 \\
+    formula\_1 & 174 & 96 & 78 & 55.17 \\
+    student\_club & 158 & 124 & 34 & 78.48 \\
+    superhero & 129 & 110 & 19 & 85.27 \\
+    thrombosis\_prediction & 163 & 83 & 80 & 50.92 \\
+    toxicology & 145 & 91 & 54 & 62.76 \\
+    \midrule[1pt]
+    \textbf{总计} & \textbf{1533} & \textbf{988} & \textbf{545} & \textbf{64.45} \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+结果显示，不同数据库之间差异明显。\texttt{superhero} 和 \texttt{student\_club} 表现较好，说明当 schema 命名较清晰、关系结构较容易探索时，Pontis 能够较稳定地生成正确 SQL。\texttt{thrombosis\_prediction}、\texttt{formula\_1} 和 \texttt{california\_schools} 准确率较低，主要原因是领域术语、时间字段、公式口径和多表连接较复杂。
+
+\subsection{错误分析}
+
+从当前日志看，Pontis 的错误并非单纯来自模型不会写 SQL，而是集中在以下几类：
+
+（1）BIRD SQL 风格偏好。BIRD 中一些题目对百分比、比例、输出列、排序和 \texttt{COUNT DISTINCT} 有较强 benchmark 风格。模型有时会生成业务上合理但与 gold SQL 口径不同的查询。
+
+（2）局部 schema 理解错误。当表名、列名或业务术语相近时，模型可能选择错误字段。例如同名 \texttt{name}、\texttt{id}、\texttt{type} 字段需要结合表语义和样例值消歧。
+
+（3）value grounding 错误。模型需要把自然语言中的实体值映射到数据库中的实际字符串、枚举或编码。若样例值检索不足，容易产生条件偏差。
+
+（4）JOIN 路径偏差。复杂数据库中正确连接路径可能需要桥接表或中间关系。即使模型识别了相关表，也可能遗漏桥接表或连接到错误列。
+
+（5）工具行为问题。过度探索、上下文过长、工具结果截断和 SQL 验证不足都可能导致最终输出偏离正确答案。
+
+这些错误类型对应了 Pontis 后续优化方向：加强 BIRD global 经验的约束力、改进局部消歧实体、降低工具轮次、增强 join 路径检查和 value retrieval 能力。
+
+\subsection{消融实验设计}
+
+为证明 Pontis 的模块贡献，本文设计以下消融实验：
+
+\begin{table}[htbp]\small
+  \centering
+  \topcaption{Pontis 消融实验设计}
+  \label{tab:ablation}
+  \begin{tabular}{lll}
+    \toprule[1.5pt]
+    \textbf{设置} & \textbf{去掉的能力} & \textbf{验证目标} \\
+    \midrule[1pt]
+    Pontis-full & 无 & 完整系统能力 \\
+    no-bird-global & 不使用 BIRD train 经验库 & 跨库经验是否迁移 SQL 写作风格 \\
+    no-disambig & 去掉消歧实体 & 消歧知识是否减少同名列混淆 \\
+    no-query & 禁用 SQL 验证查询 & 执行反馈是否改善 value grounding 和 join \\
+    no-meta-detail & 去掉 AI 表列摘要 & 语义摘要是否帮助复杂列名理解 \\
+    \bottomrule[1.5pt]
+  \end{tabular}
+\end{table}
+
+其中，\texttt{no-bird-global} 也可作为严格 train-free 设置，与 Bash Agent、CHESS 和 Alpha-SQL 等 zero-shot baseline 进行更公平比较。Pontis-full 则代表 experience-augmented 设置，重点评估跨库经验库的系统价值。
+
+\subsection{性能公平性讨论}
+
+不同方法的性能不能只用外层 \texttt{time} 粗略比较。Bash Agent 几乎没有预处理，但每题都要重新探索；Pontis 有图谱和 embedding 预处理，在线阶段通过工具读取结构化知识；CHESS、Alpha-SQL 和 DeepEye-SQL 使用多阶段 pipeline、候选生成、搜索或 revision，其 LLM 调用数和候选数可能显著高于 agent 方法。
+
+因此，本文采用两层计时协议。第一层用统一脚本记录每个命令的 wall-clock、退出码、环境变量、worker 数和 cache 状态。第二层解析各方法内部日志，提取每题耗时、LLM 调用、token、工具调用和 SQL 执行次数。主性能表只报告冷启动预处理和冷启动在线解题；warm cache 和断点续跑作为系统分析附表。
+
+在预期趋势上，Bash Agent 的预处理成本最低，但准确率和稳定性较弱；Pontis 预处理中等，在线成本取决于 agent loop 是否收敛；CHESS 的 pipeline 成本中高；DeepEye-SQL 的多阶段 snapshot 和 revision 成本较高；Alpha-SQL 的 MCTS rollout 可能带来最高在线 LLM 调用量。Pontis 的目标不是绝对最快，而是在准确率、可解释性、缓存能力和在线成本之间取得较好平衡。
+
+\section{总结与展望}
+
+\subsection{全文总结}
+
+本文针对真实数据项目中的自然语言分析问题，设计并实现了 Pontis 图谱化智能体工作空间。Pontis 的核心思想是在原始数据和 LLM 智能体之间建立可查询、可更新、可复用的知识图谱层，使智能体能够通过工具逐步获取精确上下文，而不是在每道题中从零读取全部 schema 和数据。
+
+本文完成了以下工作：
+
+（1）设计了以 Neo4j 和 Cypher 为核心的图谱工作空间，将项目中的文件、数据库、表、列、外键、统计摘要、语义描述和经验规则统一建模。
+
+（2）实现了源模块和提取器机制，使系统能够按需发布文件系统和 SQLite schema 等源事实，并自动生成列统计、值分布、列重叠、AI 摘要和语义向量等派生知识。
+
+（3）实现了面向数据分析的工具调用智能体，支持图检索、元数据查看、SQL 执行、文本搜索、JSON 查看和图写入等能力。
+
+（4）引入了多类护栏机制，对 SQL 实体、桥接表、同名列消歧、过度探索和工具轮次进行约束，减少 LLM 在数据库问答中的常见错误。
+
+（5）在 BIRD dev 上进行了阶段性评估，并提出了与 Bash Agent、CHESS、Alpha-SQL、DeepEye-SQL 等方法进行公平比较的完整实验协议。
+
+\subsection{不足与展望}
+
+当前系统仍存在若干不足。第一，Pontis 的在线表现仍受 agent loop 轮次影响，复杂问题可能需要较多工具调用，导致每题耗时达到分钟级。第二，BIRD global 经验虽然可被检索到，但模型并不总能将其作为最终 SQL 的硬约束。第三，现阶段对增量更新成本的实验还不完整，尚未系统验证图谱实体级更新相比 pipeline rebuild 的优势。第四，baseline 的完整复现实验仍需补齐，以获得更可靠的横向比较结果。
+
+未来工作可从以下方向展开：
+
+（1）优化工具调度策略，减少不必要的 \texttt{find}、\texttt{meta} 和 \texttt{query} 轮次。
+
+（2）增强经验库约束机制，使抽象规则能更稳定地影响最终 SQL。
+
+（3）系统评估增量更新能力，例如新增列、修改值分布、新增关系和删除表列后的局部刷新成本。
+
+（4）扩展数据源类型，支持远程数据库、对象存储、日志系统和业务 API。
+
+（5）引入更细粒度的性能日志，持续监控 LLM round、input token、tool result token 和 SQL execution 对在线延迟的影响。
+
+总体而言，Pontis 展示了一条区别于专用 SQL 模型和重型候选搜索 pipeline 的路线：通过维护长期存在的数据项目工作空间，让通用 LLM 智能体在真实数据环境中获得可解释、可复用、可演化的结构化记忆。
+
+% ==================== 后置部分 ====================
+\backmatter
+
+\begin{acknowledgment}
+
+感谢我的导师 XXX 教授在论文选题、系统设计和实验分析过程中给予的指导和帮助。
+
+感谢实验室同学在系统实现、实验复现和论文讨论中的支持。
+
+感谢西安交通大学提供的学习环境和科研训练机会。
+
+最后，感谢家人在本科阶段给予的理解、鼓励和支持。
+
+\end{acknowledgment}
+
+\bibliography{sample}
+
+\appendixs{Pontis 代码模块说明}
+
+Pontis 当前主要代码结构如下：
+
+\begin{verbatim}
+Pontis/
+├── storage/          # Workspace、Neo4j 图接口、源模块和触发机制
+├── extractor/        # 自动提取模块和流水线执行器
+├── explorer/         # agent-driven 的关系发现、消歧和摘要模块
+├── tool/             # agent-facing 工具实现
+├── agent/            # LLM 工具循环、prompt 组装和 guardrails
+├── scripts/BIRD/     # BIRD 抽取、benchmark 和 global knowledge 脚本
+├── docs/             # 架构、性能和实验分析文档
+├── pontis_cli.py     # 命令行入口
+└── pontis.yml        # 项目与 Neo4j 图配置
+\end{verbatim}
+
+本文涉及的主要工具和模块可通过以下命令查看：
+
+\begin{verbatim}
+python -m extractor list
+pontis <project_path>
+python -m scripts.BIRD.run_bird_benchmark --db card_games --limit 5
+\end{verbatim}
+
+\end{document}
