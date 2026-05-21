@@ -1,16 +1,47 @@
 # LaTeX build artifacts
 *.aux
-*.log
-*.out
-*.toc
 *.bbl
+*.bcf
 *.blg
-*.fls
+*.dvi
 *.fdb_latexmk
+*.fls
+*.glg
+*.glo
+*.gls
+*.idx
+*.ilg
+*.ind
+*.ist
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex
 *.synctex.gz
+*.synctex.gz(busy)
+*.toc
+*.vrb
 *.xdv
 missfont.log
-*.end
 
-# PDF output (regenerated from source)
-*.pdf
+# Generated thesis output
+/xjtuBS.pdf
+
+# Local editor / OS files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Reference manager exports
+/Exported Items/
+
+# Downloaded template repository kept for reference only
+/XJTU-BSThesis_latex_2022/
