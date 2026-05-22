@@ -70,21 +70,30 @@ Text-to-SQL Benchmarks are Broken: An In-Depth Analysis of Annotation Errors(Per
 
 
 ---
-
-那么这样对比的指标就有一些了,比如以下这几类:
+指标
 - 准确度(SQL查询结果比对)
-- 预处理阶段平均耗时
-- 每题即席查询平均耗时
-- LLM Rounds 大模型平均调用轮次: 影响agent性能的最主要指标
-- token消耗(输入token量和输出token量)
-以及可能更细粒度的,工具调用密度等问题
+- 预输入 token（可被Token 缓存命中的部分）
+- runtime 输入token
+- runtime 输出token
+- LLM 调用轮次
+- 总token消耗
 
-以及在真实工业系统可能更重要的增量更新问题
 
 
 ---
 
 
+消融实验
+- full 全量 pontis
+- no bird train集： 不复用bird train集生成的经验，直接zero shot测试，
+- no guardrail
 
 
+---
 
+研究问题
+
+1 Pontis 相比只给 shell/sqlite/file 工具的 Bash Agent，是否能通过图谱化数据工
+作空间提升 Text-to-SQL 准确率和稳定性？
+2 LLM调用及token资源消耗
+3 Text2sql数据集错因分析
