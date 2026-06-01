@@ -36,8 +36,8 @@
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{article}}
 \ProcessOptions\relax
 
-% 12pt 字号，A4 纸，单面打印（本科论文一般单面）
-\LoadClass[12pt,a4paper,oneside]{article}
+% 12pt 字号，A4 纸，双面打印
+\LoadClass[12pt,a4paper,twoside]{article}
 
 %% ============================================================================
 %%  2. 宏包加载
@@ -89,7 +89,7 @@
 
 % ---------- 行距与间距 ----------
 \RequirePackage{setspace}
-\onehalfspacing
+\setstretch{1.2}
 
 % ---------- 定理 ----------
 \RequirePackage{thmtools}
@@ -105,7 +105,7 @@
 
 % ---------- 超链接设置 ----------
 \hypersetup{
-    unicode=false,
+    unicode=true,
     hyperfootnotes=true,
     hyperindex=true,
     pageanchor=true,
@@ -244,6 +244,32 @@
 \ifXJTU@Mac   \mac   \fi
 \ifXJTU@Linux \linux \fi
 \ifXJTU@Win   \win   \fi
+\ifx\xjtu@ChineseFont@songti\@undefined \linux \fi
+
+% If the selected platform fonts are unavailable, fall back to fonts commonly
+% shipped with the other platforms or TeX Live.
+\newcommand{\XJTU@selectfont}[4]{%
+    \edef\XJTU@font@preferred{#1}%
+    \edef\XJTU@font@selected{#2}%
+    \ifXJTU@Win
+        \IfFontExistsTF{\XJTU@font@preferred}{%
+            \def#4{#1}%
+        }{%
+            \IfFontExistsTF{\XJTU@font@selected}{}{%
+                \IfFontExistsTF{#3}{\def#4{#3}}{\def#4{#1}}}}%
+    \else
+        \IfFontExistsTF{\XJTU@font@selected}{}{%
+            \IfFontExistsTF{#3}{\def#4{#3}}{\def#4{#1}}}%
+    \fi
+}
+
+\XJTU@selectfont{SimSun}{\xjtu@ChineseFont@songti}{FandolSong-Regular}{\xjtu@ChineseFont@songti}
+\XJTU@selectfont{SimHei}{\xjtu@ChineseFont@heiti}{FandolHei-Regular}{\xjtu@ChineseFont@heiti}
+\XJTU@selectfont{KaiTi}{\xjtu@ChineseFont@kaishu}{FandolKai-Regular}{\xjtu@ChineseFont@kaishu}
+\XJTU@selectfont{FangSong}{\xjtu@ChineseFont@fangsong}{FandolFang-Regular}{\xjtu@ChineseFont@fangsong}
+\XJTU@selectfont{Times New Roman}{\xjtu@EnglishFont@main}{TeX Gyre Termes}{\xjtu@EnglishFont@main}
+\XJTU@selectfont{Arial}{\xjtu@EnglishFont@sans}{TeX Gyre Heros}{\xjtu@EnglishFont@sans}
+\XJTU@selectfont{Courier New}{\xjtu@EnglishFont@mono}{Latin Modern Mono}{\xjtu@EnglishFont@mono}
 
 % --- 设置主字体 ---
 % 英文衬线（正文）：Times New Roman / Liberation Serif
@@ -258,6 +284,10 @@
                {\xjtu@ChineseFont@songti}
 \setCJKsansfont{\xjtu@ChineseFont@heiti}
 \setCJKmonofont{\xjtu@ChineseFont@fangsong}
+\newCJKfontfamily\songti{\xjtu@ChineseFont@songti}
+\newCJKfontfamily\heiti{\xjtu@ChineseFont@heiti}
+\newCJKfontfamily\kaishu{\xjtu@ChineseFont@kaishu}
+\newCJKfontfamily\fangsong{\xjtu@ChineseFont@fangsong}
 \punctstyle{hangmobanjiao}               % 标点悬挂于行末半角
 
 %% ============================================================================
@@ -324,21 +354,21 @@
 % 二级标题：小三号黑体，段前 1 行段后 0.5 行
 % 三级标题：四号黑体缩进，段前 0.5 行段后 0 行
 
-\newcommand{\sectionbreak}{\cleardoublepage \null}
+\newcommand{\sectionbreak}{\clearpage}
 
 \titleformat{\section}
     [hang]
-    {\centering\three}
+    {\centering\heiti\three}
     {\thesection}
     {1em}{}[]
 \titleformat{\subsection}
     [hang]
-    {\sthree}
+    {\heiti\sthree}
     {\thesubsection}
     {1em}{}[]
 \titleformat{\subsubsection}
     [hang]
-    {\four}
+    {\heiti\four}
     {\hspace{4ex}\thesubsubsection}
     {1em}{}[]
 
@@ -392,18 +422,26 @@
 %%  9. frontmatter / mainmatter / backmatter
 %% ============================================================================
 
+\newcommand{\XJTU@clearemptydoublepage}{%
+    \clearpage
+    \if@twoside
+        \ifodd\c@page\else
+            \thispagestyle{empty}\hbox{}\newpage
+        \fi
+    \fi}
+
 \newcommand\frontmatter{%
-    \cleardoublepage
+    \clearpage
     \pagestyle{main}
     \pagenumbering{Roman}}
 
 \newcommand\mainmatter{%
-    \cleardoublepage
+    \XJTU@clearemptydoublepage
     \pagestyle{document}
     \pagenumbering{arabic}}
 
 \newcommand\backmatter{%
-    \cleardoublepage
+    \clearpage
     \pagestyle{main}}
 
 %% ============================================================================
@@ -418,26 +456,22 @@
 % 然后调用 \makecover 生成封面。
 
 \newcommand{\makecover}{
-    \cleardoublepage
+    \clearpage
     \thispagestyle{empty}
     \begin{center}
         \vspace*{0.5cm}
         % 校徽 + 校名
         \includegraphics[width=0.65\textwidth]{figure/xjtu_emblem.png}
 
-        \vspace{0.3cm}
-        % 红色横线
-        {\color{red}\rule{0.5\textwidth}{0.4pt}}
+        \vspace{0.7cm}
+        % 论文类型
+        {\heiti\erhao 本科毕业设计（论文）}
 
-        \vspace{1cm}
-        % 论文类型（宋体二号）
-        {\erhao 本科毕业设计（论文）}
+        \vspace{2.6cm}
+        % 论文题目
+        {\heiti\xiaoerhao \XJTU@title@cn}
 
-        \vspace{1.5cm}
-        % 论文题目（宋体小二号）
-        {\xiaoerhao \XJTU@title@cn}
-
-        \vspace{2.5cm}
+        \vspace{2.6cm}
         % 信息栏（宋体四号）
         {\sihao
         \begin{tabular}{r@{\quad}l}
@@ -458,7 +492,7 @@
         % 红色注释
         {\xiaowuhao\textcolor{red}{（注：X均为阿拉伯数字，如2025年06月）}}
     \end{center}
-    \clearpage
+    \XJTU@clearemptydoublepage
 }
 
 %% ============================================================================
@@ -471,9 +505,10 @@
 % 关键词：小四号宋体加粗
 \newcommand\XJTU@abstract@cn{\three 摘\hspace{2ex}要}
 \newenvironment{abstractcn}{%
-    \cleardoublepage
-    \sectionmark{ 摘要}
-    \setcounter{page}{5}
+    \clearpage
+    \sectionmark{摘 要}
+    \phantomsection
+    \addcontentsline{toc}{section}{摘 要}
     \begin{center}
         {\vspace*{2\baselineskip plus 1ex minus .2ex}%
          \XJTU@abstract@cn
@@ -483,15 +518,17 @@
 
 \newcommand{\keywordscn}[1]{%
     \vspace{\baselineskip}\par\noindent
-    {\sfour {\bfseries 关\hspace{1ex}键\hspace{1ex}词\hspace{0.5ex}：}#1}}
+    {\sfour {\bfseries 关\hspace{1ex}键\hspace{1ex}词：}#1}}
 
 % --- 英文摘要 ---
 % 标题："ABSTRACT"，三号居中
 % 正文段首不缩进，段间距 1em
 \newcommand\XJTU@abstract@en{\three ABSTRACT}
 \newenvironment{abstracten}{%
-    \cleardoublepage
+    \clearpage
     \sectionmark{ ABSTRACT}
+    \phantomsection
+    \addcontentsline{toc}{section}{ABSTRACT}
     \begin{center}
         {\vspace*{2\baselineskip plus 1ex minus .2ex}%
          \XJTU@abstract@en
@@ -500,8 +537,8 @@
     \setlength\parskip{1em}
     \setlength\parindent{0em}
 }{%
-    \setlength\parskip{0.1em}
-    \setlength\parindent{2ex}
+    \setlength\parskip{0pt}
+    \setlength\parindent{2em}
     \par}
 
 \newcommand{\keywordsen}[1]{%
@@ -514,9 +551,14 @@
 
 \let\oldtableofcontents\tableofcontents
 \renewcommand{\tableofcontents}{%
-    \cleardoublepage
-    \sectionmark{目录}
-    \oldtableofcontents
+    \clearpage
+    \sectionmark{目 录}
+    \begin{center}%
+        {\vspace*{2\baselineskip plus 1ex minus .2ex}%
+         \three \contentsname%
+         \vspace*{1\baselineskip plus 1ex minus .2ex}}%
+    \end{center}%
+    \@starttoc{toc}
 }
 
 \renewcommand{\contentsname}{目\hspace{2ex}录}
@@ -578,7 +620,7 @@
 %% ============================================================================
 
 \newenvironment{denotation}{%
-    \cleardoublepage
+    \clearpage
     \refstepcounter{section}
     \section*{主要符号表}
     \sectionmark{主要符号表}
@@ -606,7 +648,7 @@
 \setcounter{appends}{0}
 
 \newcommand{\appendixs}[1]{%
-    \cleardoublepage
+    \clearpage
     \refstepcounter{appends}
     \stepcounter{section}
     \sectionmark{ 附录\Alph{appends}  \hspace{0.15cm}#1}
@@ -620,7 +662,7 @@
 
 \let\oldbibliography\bibliography
 \renewcommand{\bibliography}[1]{%
-    \cleardoublepage
+    \clearpage
     \refstepcounter{section}%
     \sectionmark{参考文献}
     \addcontentsline{toc}{section}{参考文献}
@@ -674,11 +716,15 @@
 
 \newcommand{\XJTU@acknowledgment}{致\hspace{2ex}谢}
 \newenvironment{acknowledgment}{%
-    \cleardoublepage
+    \clearpage
     \refstepcounter{section}
-    \section*{\XJTU@acknowledgment}
     \sectionmark{致谢}
     \addcontentsline{toc}{section}{致谢}
+    \begin{center}%
+        {\vspace*{2\baselineskip plus 1ex minus .2ex}%
+         \heiti\three \XJTU@acknowledgment%
+         \vspace*{1\baselineskip plus 1ex minus .2ex}}%
+    \end{center}
 }{\par}
 
 %% ============================================================================
@@ -815,6 +861,6 @@
 %%  22. 全局段间距
 %% ============================================================================
 
-\AtBeginDocument{\setlength\parskip{0.1em}}
+\AtBeginDocument{\setlength\parskip{0pt}}
 
 \makeatother
