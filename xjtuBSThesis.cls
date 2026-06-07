@@ -684,8 +684,9 @@
          \vspace*{1\baselineskip plus 1ex minus .2ex}}%
     \end{center}}
 
-% \upcite — 上标引用，如 ^[1]
-\newcommand{\upcite}[1]{\textsuperscript{\cite{#1}}}
+% \upcite — 上标引用，如 ^[1]. Use \citenum to avoid nested superscripts for
+% multi-digit references produced by \cite.
+\newcommand{\upcite}[1]{\textsuperscript{\mbox{[\citenum{#1}]}}}
 
 % 带页码的上标引用支持
 \renewcommand\NAT@citesuper[3]{%
